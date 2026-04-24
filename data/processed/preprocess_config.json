@@ -1,0 +1,13 @@
+{
+  "sample_rate": 1000,
+  "normalization": "peak amplitude to [-1, 1]",
+  "segmentation": "none",
+  "includes_augmented": true,
+  "total_files": 7173,
+  "absent_files": 2391,
+  "present_files": 2391,
+  "unknown_files": 2391,
+  "original_files": 3163,
+  "augmented_files": 4010,
+  "dtype": "float32"
+}

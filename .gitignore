@@ -1,0 +1,21 @@
+# raw audio
+absent 2391/
+present_2391/
+unknown_2391/
+
+# large processed data
+data/processed/absent/
+data/processed/present/
+data/processed/unknown/
+data/decomposed/
+
+# research paper
+Research Paper/
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# logs
+logs/
