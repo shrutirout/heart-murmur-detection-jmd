@@ -1,0 +1,226 @@
+# Heart Murmur Detection using JMD and Deep Learning
+
+This project detects heart murmurs from phonocardiogram (PCG) recordings using the Jump Plus AM-FM Mode Decomposition (JMD) algorithm combined with a 2D ResNet classifier. The dataset is the CirCor DigiScope dataset from PhysioNet, which contains recordings from four auscultation locations per patient labeled as murmur absent, murmur present, or unknown.
+
+The project follows two parallel tracks. The first track uses JMD to extract hand-crafted features and trains a Random Forest. The second track uses JMD modes alongside mel spectrograms and MFCCs as input channels to a 2D convolutional neural network. The CNN approach significantly outperforms the Random Forest.
+
+**Final results:**
+- Recording-level accuracy: 88.77% (AUC 0.9346)
+- Patient-level accuracy: 95.78% (AUC 0.9643)
+
+---
+
+## Dataset
+
+Download the CirCor DigiScope Phonocardiogram Dataset from PhysioNet:
+https://physionet.org/content/circor-heart-sound/1.0.3/
+
+Place the recordings in three folders at the project root:
+```
+absent 2391/
+present_2391/
+unknown_2391/
+```
+
+These folders are not included in this repository because of their size (approximately 1.2 GB total).
+
+---
+
+## Project Structure
+
+```
+.
+├── 01_DataExploration.ipynb
+├── 02_Preprocessing.ipynb
+├── 03_JMD_Implementation.ipynb
+├── 04_JMD_Parameter_Tuning.ipynb
+├── 06_Feature_Extraction.ipynb
+├── 06.1_Entropy_Feature_Extraction.ipynb
+├── 07_Feature_Analysis.ipynb
+├── 08_Feature_Selection.ipynb
+├── 09_Train_Test_Split.ipynb
+├── 10_Random_Forest.ipynb
+├── 11_RF_Hyperparameter_Tuning.ipynb
+├── 15_1D_CNN_MultiSeg.ipynb
+├── 17_Mel_MFCC_JMD.ipynb
+├── 19_Patient_Level.ipynb
+├── 21_Unknown_Inference.ipynb
+├── 22_Final_Summary.ipynb
+├── decompose_parallel.py
+├── decomposition/
+│   └── jmd.py
+├── data/
+│   ├── splits/
+│   │   ├── train.csv
+│   │   └── test.csv
+│   ├── features/
+│   │   ├── features.csv
+│   │   ├── features_selected.csv
+│   │   └── ...
+│   └── processed/
+│       ├── jmd_params.json
+│       └── decomposition_progress.csv
+├── models/
+│   ├── 2d_resnet_v4.keras
+│   ├── random_forest.joblib
+│   └── random_forest_tuned.joblib
+└── outputs/
+```
+
+---
+
+## Dependencies
+
+```
+numpy
+pandas
+scipy
+matplotlib
+seaborn
+scikit-learn
+tensorflow >= 2.10
+joblib
+librosa
+pathlib
+```
+
+Install with:
+```bash
+pip install numpy pandas scipy matplotlib seaborn scikit-learn tensorflow joblib librosa
+```
+
+---
+
+## How to Run
+
+The notebooks are numbered in the order they should be run. The gap in numbers (no 05, 12, 13, 14, 16, 18, 20) reflects notebooks from intermediate experiments that were removed.
+
+**Important:** Before running any notebook, set `PROJECT_ROOT` in the first cell to your local path. Currently it is set to `D:/sop`.
+
+### Phase 1: Data Preparation
+
+**01_DataExploration.ipynb**
+Scans all WAV files across the three class folders. Checks sampling rate, signal duration, auscultation location distribution, patient counts, and amplitude statistics.
+Output: `data/file_metadata.csv`
+
+**02_Preprocessing.ipynb**
+Loads every WAV file, resamples to 1000 Hz, normalizes amplitude to [-1, 1], and saves as a NumPy array.
+Output: `data/processed/absent/`, `data/processed/present/`, `data/processed/unknown/` (one .npy file per recording)
+
+**03_JMD_Implementation.ipynb**
+Implements the JMD algorithm in Python. Validates it on a synthetic signal with known components, then tests on real PCG recordings. Saves the implementation as a reusable module.
+Output: `decomposition/jmd.py`
+
+**04_JMD_Parameter_Tuning.ipynb**
+Sweeps JMD parameters K (number of modes), alpha (bandwidth), and beta (jump sparsity) on sample PCG signals to find the best combination for heart sound decomposition.
+Output: `data/processed/jmd_params.json`
+
+Final parameters selected: K=4, alpha=5000, tau=5, beta=0.03, b_bar=0.45
+
+**decompose_parallel.py** (run as a script, not a notebook)
+Applies JMD to all 7173 recordings using multiprocessing. Reads the parameters saved in nb04. Tracks progress in a CSV so it can be safely stopped and restarted.
+```bash
+python decompose_parallel.py
+python decompose_parallel.py --workers 4
+```
+Output: `data/decomposed/absent/`, `data/decomposed/present/`, `data/decomposed/unknown/` (one .npz per recording containing modes u, jump component v, and frequencies omega)
+
+This step takes several hours. Run it overnight.
+
+---
+
+### Phase 2: Feature Engineering (Random Forest track)
+
+**06_Feature_Extraction.ipynb**
+Extracts 60 hand-crafted features from each decomposed recording. Features include time-domain statistics, frequency-domain statistics, mode energies, energy ratios, and jump component statistics per JMD mode.
+Output: `data/features/features.csv` (7173 rows, 60 features)
+
+**06.1_Entropy_Feature_Extraction.ipynb**
+Adds 12 entropy features (permutation entropy, sample entropy, and Kraskov entropy for each of the 4 JMD modes). Merges with the existing feature table.
+Output: `data/features/features.csv` updated to 72 features, `data/features/features_entropy.csv`
+
+Note: This notebook must run after 06, not before, because it reads and overwrites features.csv.
+
+**07_Feature_Analysis.ipynb**
+Analyses which features best separate murmur absent from murmur present recordings. Uses Mann-Whitney U tests to rank all 72 features by effect size. Saves distribution plots, a correlation heatmap, and the ranked feature list.
+Output: `data/features/feature_rankings.csv`, `data/features/feature_correlations.csv`, `outputs/feature_dist_*.png`, `outputs/feature_correlation_heatmap.png`, `outputs/feature_rankings_top30.png`
+
+**08_Feature_Selection.ipynb**
+Reduces the 72 features down to 25 based on Mann-Whitney effect size and p-value thresholds. Unknown recordings are carried through separately and never used for analysis.
+Output: `data/features/features_selected.csv` (labelled only), `data/features/features_selected_unknown.csv`
+
+**09_Train_Test_Split.ipynb**
+Splits the labelled dataset 80/20 at the patient level, meaning all recordings from a patient always go to the same split. This prevents data leakage from augmented copies of the same recording appearing in both train and test.
+Output: `data/splits/train.csv` (3785 recordings), `data/splits/test.csv` (997 recordings)
+
+---
+
+### Phase 3: Random Forest Models
+
+**10_Random_Forest.ipynb**
+Trains a Random Forest on the 25 selected features. Evaluates on the test set and compares feature importances against the Mann-Whitney rankings.
+Output: `models/random_forest.joblib`, `outputs/rf_confusion_matrix.png`, `outputs/rf_feature_importances.png`
+
+**11_RF_Hyperparameter_Tuning.ipynb**
+Runs a grid search with 5-fold cross-validation to find the best Random Forest parameters. Scores on ROC AUC. Evaluates the best model on the held-out test set.
+Output: `models/random_forest_tuned.joblib`, `outputs/rf_tuned_confusion_matrix.png`
+
+---
+
+### Phase 4: Deep Learning Models
+
+The CNN notebooks read from `data/splits/train.csv` and `data/splits/test.csv` for the file list, then load the corresponding preprocessed signals and JMD decompositions directly. They do not use the hand-crafted feature CSVs.
+
+**15_1D_CNN_MultiSeg.ipynb**
+First 2D CNN model (the filename is a leftover from an earlier design). Converts each 4-second window into a 3-channel log-power spectrogram (raw PCG + JMD low modes + JMD high modes) and trains a 2D ResNet. Saves test probabilities which are used later as part of the nb17 ensemble.
+Output: `outputs/cnn15_test_probs.csv`, `outputs/cnn15_confusion_matrix.png`, `outputs/cnn15_roc_curve.png`
+
+Result: 86.16% recording-level accuracy, AUC 0.9217
+
+**17_Mel_MFCC_JMD.ipynb**
+Final CNN model. Uses a 5-channel input: mel spectrogram, MFCC, RMS energy map, JMD low mode spectrogram, JMD high mode spectrogram. Trains the same 2D ResNet architecture. Also computes an ensemble with the nb15 probabilities.
+Output: `models/2d_resnet_v4.keras`, `outputs/cnn17_test_probs.csv`, `outputs/cnn17_confusion_matrix.png`, `outputs/cnn17_roc_curve.png`
+
+Result: 88.77% standalone, 89.57% ensemble with nb15
+
+---
+
+### Phase 5: Evaluation and Inference
+
+**19_Patient_Level.ipynb**
+Groups the nb17 test predictions by patient ID and averages probabilities across all recording locations (AV, MV, PV, TV) per patient. Finds the threshold that maximises patient-level accuracy.
+Output: `outputs/cnn17_patient_confusion_matrix.png`
+
+Result: 95.78% patient-level accuracy, AUC 0.9643
+
+**21_Unknown_Inference.ipynb**
+Runs the trained nb17 model on all 2391 unknown recordings. Uses the same 5-channel spectrogram pipeline as nb17. Classifies each recording individually and then aggregates to patient level.
+Output: `outputs/unknown_predictions.csv` (per recording), `outputs/unknown_patient_summary.csv` (per patient with confidence labels)
+
+**22_Final_Summary.ipynb**
+Loads the saved test probabilities and unknown predictions. Generates the final confusion matrix, ROC curve, probability distribution plot, and unknown patient breakdown. Prints a complete results summary.
+Output: `outputs/summary_confusion_matrix.png`, `outputs/summary_roc_curve.png`, `outputs/summary_prob_distribution.png`, `outputs/summary_unknown_patients.png`
+
+---
+
+## Results Summary
+
+| Model | Recording Accuracy | AUC |
+|---|---|---|
+| Random Forest (hand-crafted JMD features) | ~74% | ~0.74 |
+| Nb15: 2D ResNet, 3-channel spectrogram | 86.16% | 0.9217 |
+| Nb17: 2D ResNet, 5-channel mel+MFCC+JMD | 88.77% | 0.9346 |
+| Nb17 + Nb15 ensemble | 89.57% | 0.9427 |
+| Nb17 patient-level (final result) | **95.78%** | **0.9643** |
+
+---
+
+## Pre-trained Models
+
+The trained model weights are included in the `models/` folder:
+
+- `2d_resnet_v4.keras` -- the nb17 ResNet, 2.4M parameters, 5-channel mel+MFCC+JMD input
+- `random_forest.joblib` -- baseline RF trained on 25 JMD features
+- `random_forest_tuned.joblib` -- grid-search tuned RF
+
+To run inference on new recordings using the trained model, run `21_Unknown_Inference.ipynb` after placing decomposed .npz files in `data/decomposed/unknown/` and preprocessed .npy files in `data/processed/unknown/`.
