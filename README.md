@@ -2,7 +2,7 @@
 
 This project detects heart murmurs from phonocardiogram (PCG) recordings using the Jump Plus AM-FM Mode Decomposition (JMD) algorithm combined with a 2D ResNet classifier. The dataset is the CirCor DigiScope dataset from PhysioNet, which contains recordings from four auscultation locations per patient labeled as murmur absent, murmur present, or unknown.
 
-The project follows two parallel tracks. The first track uses JMD to extract hand-crafted features and trains a Random Forest. The second track uses JMD modes alongside mel spectrograms and MFCCs as input channels to a 2D convolutional neural network. The CNN approach significantly outperforms the Random Forest.
+The project progressed through two approaches. The first used JMD to extract hand-crafted features and trained a Random Forest. When that proved insufficient, a 2D ResNet was trained on JMD-derived spectrogram inputs combined with mel spectrograms and MFCCs. The CNN approach significantly outperforms the Random Forest.
 
 **Final results:**
 - Recording-level accuracy: 88.77% (AUC 0.9346)
@@ -56,7 +56,14 @@ No folders need to be created manually. Each notebook and script creates its own
 ├── decompose_parallel.py
 ├── decomposition/
 │   └── jmd.py
+├── JMD/
+│   ├── JMD.m
+│   ├── JMD_test.m
+│   └── jump2.mat
+├── Entropy Code/
+│   └── KraskovEntropyV2.m
 ├── data/
+│   ├── file_metadata.csv
 │   ├── splits/
 │   │   ├── train.csv
 │   │   └── test.csv
@@ -66,6 +73,7 @@ No folders need to be created manually. Each notebook and script creates its own
 │   │   └── ...
 │   └── processed/
 │       ├── jmd_params.json
+│       ├── preprocess_config.json
 │       └── decomposition_progress.csv
 ├── models/
 │   ├── 2d_resnet_v4.keras
@@ -201,7 +209,7 @@ Result: 86.16% recording-level accuracy, AUC 0.9217
 
 **17_Mel_MFCC_JMD.ipynb**
 Final CNN model. Uses a 5-channel input: mel spectrogram, MFCC, RMS energy map, JMD low mode spectrogram, JMD high mode spectrogram. Trains the same 2D ResNet architecture. Also computes an ensemble with the nb15 probabilities.
-Output: `models/2d_resnet_v4.keras`, `outputs/cnn17_test_probs.csv`, `outputs/cnn17_confusion_matrix.png`, `outputs/cnn17_roc_curve.png`
+Output: `models/2d_resnet_v4.keras`, `outputs/cnn17_test_probs.csv`, `outputs/cnn17_confusion_matrix.png`, `outputs/cnn17_standalone_confusion_matrix.png`, `outputs/cnn17_roc_curve.png`
 
 Result: 88.77% standalone, 89.57% ensemble with nb15
 
