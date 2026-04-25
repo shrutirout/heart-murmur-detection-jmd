@@ -255,4 +255,4 @@ The trained model weights are included in the `models/` folder:
 - `random_forest.joblib` -- baseline RF trained on 25 JMD features
 - `random_forest_tuned.joblib` -- grid-search tuned RF
 
-To run inference on new recordings using the trained model, run `21_Unknown_Inference.ipynb` after placing decomposed .npz files in `data/decomposed/unknown/` and preprocessed .npy files in `data/processed/unknown/`.
+To run inference on new recordings using the trained model, run `21_Unknown_Inference.ipynb` after placing decomposed .npz files in `data/decomposed/unknown/`. The preprocessed .npy files are already included in the repository.
